@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="848" height="84" viewBox="0 0 848 84">
+<rect x="0.5" y="0.5" width="847" height="83" rx="8" fill="#16161a" stroke="#2c2c33"/>
+<rect x="12.5" y="10.5" width="823" height="28" rx="5" fill="none" stroke="#2c2c33"/>
+<text x="22" y="29" font-family="ui-monospace,SFMono-Regular,'Cascadia Mono',Consolas,'Liberation Mono',monospace" font-size="14" fill="#8c8c96">&gt;</text>
+<text x="20" y="64" font-family="ui-monospace,SFMono-Regular,'Cascadia Mono',Consolas,'Liberation Mono',monospace" font-size="14" xml:space="preserve" textLength="808.0" lengthAdjust="spacingAndGlyphs"><tspan fill="#6ec6e6">Opus 5.5 · high</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">91% ctx</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">5h 23% (in 2h 9m)</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">wk 41% (in 4d 10h)</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">$3.87 session</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">$96 wk</tspan><tspan fill="#8c8c96"> | </tspan><tspan fill="#e4e4e8">$392 mo</tspan></text>
+</svg>

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="330" viewBox="0 0 680 330" font-family="ui-monospace,SFMono-Regular,'Cascadia Mono',Consolas,'Liberation Mono',monospace" font-size="12.5">
+<rect x="0.5" y="0.5" width="679" height="329" rx="8" fill="#16161a" stroke="#2c2c33"/>
+<path d="M58.0,278.0 L656.0,22.0 L656.0,278.0 Z" fill="#8c8c96" fill-opacity="0.16"/>
+<line x1="58" x2="656" y1="278.0" y2="278.0" stroke="#2c2c33"/>
+<text x="50" y="282.0" text-anchor="end" fill="#8c8c96">0%</text>
+<line x1="58" x2="656" y1="226.8" y2="226.8" stroke="#2c2c33"/>
+<text x="50" y="230.8" text-anchor="end" fill="#8c8c96">20%</text>
+<line x1="58" x2="656" y1="175.6" y2="175.6" stroke="#2c2c33"/>
+<text x="50" y="179.6" text-anchor="end" fill="#8c8c96">40%</text>
+<line x1="58" x2="656" y1="124.4" y2="124.4" stroke="#2c2c33"/>
+<text x="50" y="128.4" text-anchor="end" fill="#8c8c96">60%</text>
+<line x1="58" x2="656" y1="73.19999999999999" y2="73.19999999999999" stroke="#2c2c33"/>
+<text x="50" y="77.19999999999999" text-anchor="end" fill="#8c8c96">80%</text>
+<line x1="58" x2="656" y1="22.0" y2="22.0" stroke="#2c2c33"/>
+<text x="50" y="26.0" text-anchor="end" fill="#8c8c96">100%</text>
+<text x="58.0" y="296" text-anchor="middle" fill="#8c8c96">0</text>
+<text x="143.42857142857144" y="296" text-anchor="middle" fill="#8c8c96">1</text>
+<text x="228.85714285714286" y="296" text-anchor="middle" fill="#8c8c96">2</text>
+<text x="314.2857142857143" y="296" text-anchor="middle" fill="#8c8c96">3</text>
+<text x="399.7142857142857" y="296" text-anchor="middle" fill="#8c8c96">4</text>
+<text x="485.14285714285717" y="296" text-anchor="middle" fill="#8c8c96">5</text>
+<text x="570.5714285714286" y="296" text-anchor="middle" fill="#8c8c96">6</text>
+<text x="656.0" y="296" text-anchor="middle" fill="#8c8c96">7</text>
+<text x="357.0" y="320" text-anchor="middle" fill="#8c8c96">days since the weekly reset</text>
+<text transform="translate(16 150.0) rotate(-90)" text-anchor="middle" fill="#8c8c96">weekly quota used</text>
+<line x1="58" x2="656" y1="73.19999999999999" y2="73.19999999999999" stroke="#e6b450" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="68.25142857142858" y="66.19999999999999" fill="#e6b450">fixed: shown from 80% used (default)</text>
+<line x1="58.0" y1="278.0" x2="656.0" y2="22.0" stroke="#6ec6e6" stroke-width="2"/>
+<text x="557.7571428571428" y="42.47999999999999" text-anchor="end" fill="#6ec6e6">pace: 14.29% x days</text>
+<text x="450.9714285714286" y="221.68" fill="#e4e4e8">hidden: under an even</text>
+<text x="450.9714285714286" y="238.68" fill="#e4e4e8">share of the week</text>
+<text x="87.9" y="124.4" fill="#e4e4e8">shown: ahead of pace</text>
+<circle cx="228.85714285714286" cy="188.4" r="4.5" fill="#e4e4e8" stroke="#16161a" stroke-width="1.5"/>
+<text x="218.85714285714286" y="192.4" text-anchor="end" fill="#e4e4e8">pace, day 2, 35%: shown</text>
+<circle cx="228.85714285714286" cy="214.0" r="4.5" fill="#8c8c96" stroke="#16161a" stroke-width="1.5"/>
+<text x="238.85714285714286" y="218.0" text-anchor="start" fill="#8c8c96">pace, day 2, 25%: hidden</text>
+</svg>

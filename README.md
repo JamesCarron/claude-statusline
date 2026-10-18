@@ -1,17 +1,53 @@
 # statusline — configurable Claude Code status line with usage stats
 
-Puts usage numbers into the Claude Code terminal as its status line, the way the VS Code "Claude Code Usage" extension shows them in VS Code. With the default config it reads:
+Puts usage numbers into the Claude Code terminal as its status line, the way the VS Code "Claude Code Usage" extension shows them in VS Code. With the default config, early in the week:
 
-```
-Opus 5.5 | me\Documents | █░░░░░░░ ctx | 5h ██░░░░░░ 23% | $392 mo
-```
-
-Context is a used-% bar, the 5-hour quota a bar plus percent, and the month total is dim. A quota's reset time, such as `wk 84% (Sun 00:00)`, appears only once that quota is at least 60% used. By default the weekly quota is hidden completely until it reaches 80% used; the config page can switch that to "ahead of pace" (14.29%, 1/7 of the week, per day since the reset) or always show it.
+![Default status line: model, folder, context bar, 5-hour quota bar and percent, dim month total](docs/img/line_default.svg)
 
 The items are model, folder, context, 5-hour quota, weekly quota, month total, week total and session cost. You choose which show, in what order, and how each is formatted on a local config page. Costs are estimates at API list prices, not a bill.
 
 - **Month total**: cost since the first weekly reset that falls in the calendar month (a reset on day 1–7), up to the first weekly reset of the next month. It is a run of whole quota weeks, not a calendar month.
 - **Week total**: cost since the current weekly quota window started (`seven_day.resets_at` minus 7 days).
+
+## What it looks like
+
+Every image here is the real `statusline.sh` output for a sample payload, drawn with its terminal colours. `python docs/make_renders.py` rebuilds them.
+
+**Late in the week.** A quota turns amber from 80% used, and its reset time appears from 60% used. The weekly quota has passed its 80% hide threshold, so it is back in the line:
+
+![Busy week: 5-hour quota at 86% and weekly quota at 84%, both amber with reset times](docs/img/line_busy.svg)
+
+**Customised.** Effort level appended, the model in the accent colour, context as percent left, countdowns instead of clock times, and all three cost totals, with the folder hidden:
+
+![Customised line with effort level, countdown resets and session, week and month costs](docs/img/line_custom.svg)
+
+## When the weekly quota shows
+
+The weekly quota is the number you least need to see most of the time, so it can stay out of the line until it matters. On the config page, the weekly quota's **Hide until** setting has three modes:
+
+| Mode | Shown when | Setting |
+|---|---|---|
+| Fixed (default) | used ≥ a fixed % | `qwk.hidefixed`, default 80 |
+| Pace | used ≥ pace × days since the weekly reset | `qwk.hidepace`, default 14.29 %/day |
+| Off | always | — |
+
+**Pace mode is a cumulative threshold.** The allowance grows through the week, by 100/7 = 14.29% for every day since the weekly reset. The quota stays hidden while you are under an even share of the week, and appears as soon as you reach it or get ahead of it. That is the point where, if you carried on at that rate, you would run out before the reset. The threshold grows continuously, not in daily steps, so half a day in it is 7.1%. Days since the reset are measured from the start of the quota window, which is `seven_day.resets_at` minus 7 days.
+
+| Days since reset | 1 | 2 | 3 | 3.5 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| Hidden below | 14.3% | 28.6% | 42.9% | 50% | 57.1% | 71.4% | 85.7% | 100% |
+
+![Chart of weekly quota used against days since the reset: the pace line rises from 0% to 100% over 7 days, quota is hidden below it; the fixed 80% line is dashed](docs/img/weekly_threshold.svg)
+
+Two days in, the limit is 28.6%. At 25% used the weekly quota stays hidden:
+
+![Pace mode, day 2, 25% used: weekly quota hidden](docs/img/line_pace_hidden.svg)
+
+At 35% you are ahead of pace, and it appears:
+
+![Pace mode, day 2, 35% used: weekly quota shown](docs/img/line_pace_shown.svg)
+
+The two modes suit different habits. Fixed mode is simpler: nothing until 80%, then always. Pace mode warns early in the week if you are burning through it, and stays quiet late in the week when a high number is expected. The two lines cross at about 5.6 days. Set the pace to match how you work: 20 %/day spreads the quota over a five-day working week, and 14.29 over all seven days. While the weekly quota is auto-hidden, the config page shows it struck through so you can still drag it into place.
 
 ## Install
 
@@ -50,6 +86,7 @@ Run `Statusline_Config.bat` (or `python config_server.py`). It starts a stdlib-o
 | `Statusline_Config.bat` | Launcher. |
 | `tests/test_statusline.py` | Checks that the bash defaults equal `DEFAULTS`, plus every format option, order/show, ANSI colour and validation. Run `python -m unittest discover -s tests -v`. |
 | `timing_test.js` | Times `statusline.sh` the way Claude Code starts it. Note that it overwrites `last_payload.json` with a synthetic payload until the next real refresh. |
+| `docs/make_renders.py`, `docs/img/` | The README images. The script runs the real `statusline.sh` on sample payloads in a temp state folder and draws each line as an SVG, plus the weekly-threshold chart. Re-run it after changing defaults or formats. |
 | `Setup_Statusline.bat`, `setup_statusline.ps1` | Setup: Git Bash check, state folder, `settings.json` wiring, test render. See Install and Wiring. |
 
 ## Wiring
