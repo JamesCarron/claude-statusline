@@ -1,0 +1,5 @@
+* text=auto
+# bash fails on CRLF ($'\r': command not found), whatever core.autocrlf says
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
