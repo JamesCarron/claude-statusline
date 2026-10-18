@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status Line Config</title>
+<style>
+/* Layout and terminal preview. Page colours are house tokens; the terminal is
+   always dark, so it pairs dark-ramp surface and ink steps deliberately. */
+/* Neutral fallback tokens for when no house stylesheet is inlined. :where()
+   has zero specificity, so an inlined stylesheet's :root always wins. */
+:where(:root){
+  --a-font:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --a-font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --a-text-h3:17px;--a-text-sm:13px;--a-text-xs:12px;
+  --a-radius:8px;--a-radius-sm:5px;--a-radius-chip:999px;
+  --a-bg:#ffffff;--a-bg-panel:#f7f7f8;--a-bg-subtle:#efeff1;
+  --a-ink:#1b1b1f;--a-ink-secondary:#5c5c66;
+  --a-line:#dcdce0;--a-line-strong:#b9b9c0;
+  --a-accent:#2f5bd3;--a-accent-ink:#ffffff;--a-link:#2f5bd3;--a-focus:#2f5bd3;
+  --a-amber:#a35f00;--a-critical:#b42318;
+  --a-d-neutral-surface-1:#16161a;--a-d-neutral-surface-4:#2c2c33;--a-d-neutral-surface-6:#3d3d46;
+  --a-d-neutral-ink-2:#6e6e78;--a-d-neutral-ink-3:#8c8c96;--a-d-neutral-ink-4:#a9a9b2;--a-d-neutral-ink-6:#e4e4e8;
+  --a-d-blue-ink-5:#6ec6e6;--a-d-orange-ink-5:#e6b450;
+}
+@media (prefers-color-scheme:dark){:where(:root:not([data-theme="light"])){
+  --a-bg:#121215;--a-bg-panel:#1b1b20;--a-bg-subtle:#24242a;
+  --a-ink:#ececf0;--a-ink-secondary:#a4a4ae;
+  --a-line:#33333b;--a-line-strong:#4a4a54;
+  --a-accent:#7c9cf0;--a-accent-ink:#0e0e12;--a-link:#8fadf5;--a-focus:#8fadf5;
+  --a-amber:#f0b44c;--a-critical:#f07a6e;
+}}
+:where(:root[data-theme="dark"]){
+  --a-bg:#121215;--a-bg-panel:#1b1b20;--a-bg-subtle:#24242a;
+  --a-ink:#ececf0;--a-ink-secondary:#a4a4ae;
+  --a-line:#33333b;--a-line-strong:#4a4a54;
+  --a-accent:#7c9cf0;--a-accent-ink:#0e0e12;--a-link:#8fadf5;--a-focus:#8fadf5;
+  --a-amber:#f0b44c;--a-critical:#f07a6e;
+}
+body{margin:0;background:var(--a-bg);color:var(--a-ink);font-family:var(--a-font)}
+.top{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--a-line)}
+.top h1{font-size:var(--a-text-h3);margin:0}
+.top .spacer{flex:1}
+.top .state{color:var(--a-ink-secondary);font-size:var(--a-text-sm)}
+.wrap{max-width:1240px;margin:24px auto;padding:0 24px;display:grid;grid-template-columns:1fr 380px;gap:20px;align-items:start}
+.panel{background:var(--a-bg-panel);border:1px solid var(--a-line);border-radius:var(--a-radius);padding:18px}
+.panel h2{font-size:var(--a-text-h3);margin:0 0 12px}
+.term{background:var(--a-d-neutral-surface-1);color:var(--a-d-neutral-ink-6);font-family:var(--a-font-mono);
+  font-size:13px;line-height:1.55;border-radius:var(--a-radius);padding:14px 16px;border:1px solid var(--a-line-strong)}
+.term .box{border:1px solid var(--a-d-neutral-ink-2);border-radius:6px;padding:4px 10px;margin:0 0 6px;color:var(--a-d-neutral-ink-4)}
+.term .sl{white-space:nowrap;min-height:22px;display:flex;align-items:center;padding-top:4px;overflow-x:auto;overflow-y:visible}
+.term .sep{color:var(--a-d-neutral-ink-6);padding:0 .1em}
+.seg{padding:1px 3px;border-radius:3px;position:relative;cursor:grab;outline:1px dashed transparent}
+.seg:hover{outline-color:var(--a-d-neutral-ink-4)}
+.seg.sel{outline:1px solid var(--a-d-orange-ink-5)!important;background:var(--a-d-neutral-surface-4)}
+.seg.drop-l{box-shadow:-3px 0 0 var(--a-d-blue-ink-5)}
+.seg.drop-r{box-shadow:3px 0 0 var(--a-d-blue-ink-5)}
+.seg.c-dim{color:var(--a-d-neutral-ink-4)}
+.seg.c-accent{color:var(--a-d-blue-ink-5)}
+.seg.c-warn{color:var(--a-amber)}
+.seg.c-hidden{color:var(--a-d-neutral-ink-3);text-decoration:line-through}
+.seg.nodata{color:var(--a-d-neutral-ink-3);font-style:italic}
+.seg .x{display:none;position:absolute;top:-9px;right:-7px;width:15px;height:15px;border-radius:50%;
+  background:var(--a-d-neutral-surface-6);color:var(--a-d-neutral-ink-6);font-size:10px;line-height:15px;text-align:center;cursor:pointer}
+.seg:hover .x{display:block}
+.hint{color:var(--a-ink-secondary);font-size:var(--a-text-sm);margin:8px 0 0}
+.tray{display:flex;gap:8px;flex-wrap:wrap;min-height:40px;padding:10px;border:1px dashed var(--a-line-strong);
+  border-radius:var(--a-radius-sm);margin-top:12px;align-items:center}
+.tray.over{background:var(--a-bg-subtle)}
+.tray .muted{color:var(--a-ink-secondary);font-size:var(--a-text-sm)}
+.chip{display:inline-block;padding:3px 10px;border-radius:var(--a-radius-chip);border:1px solid var(--a-line-strong);
+  background:var(--a-bg);color:var(--a-ink);font-size:var(--a-text-sm);cursor:grab}
+.chip.sel{outline:2px solid var(--a-accent);outline-offset:1px}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.eyebrow{color:var(--a-accent-ink);font-weight:600;font-size:var(--a-text-xs);text-transform:uppercase;letter-spacing:.06em}
+.insp h2{margin:4px 0 6px}
+.insp .desc{color:var(--a-ink-secondary);margin:0 0 14px;font-size:var(--a-text-sm)}
+.insp dl{display:grid;grid-template-columns:140px 1fr;gap:10px 14px;align-items:center;margin:0}
+.insp dt{color:var(--a-ink-secondary);font-size:var(--a-text-sm)}
+.insp dd{margin:0;min-width:0}
+.insp select,.insp input[type=text],.insp input[type=number]{font:inherit;font-size:var(--a-text-sm);color:var(--a-ink);
+  background:var(--a-bg);border:1px solid var(--a-line-strong);border-radius:var(--a-radius-sm);padding:6px 10px;max-width:100%}
+.insp select:focus,.insp input:focus{outline:2px solid var(--a-focus);outline-offset:1px}
+.sw{position:relative;width:36px;height:20px;display:inline-block}
+.sw input{opacity:0;width:0;height:0}
+.sw span{position:absolute;inset:0;border-radius:10px;background:var(--a-line-strong);cursor:pointer;transition:.15s}
+.sw span:before{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;border-radius:50%;background:var(--a-bg);transition:.15s}
+.sw input:checked+span{background:var(--a-link)}
+.sw input:checked+span:before{transform:translateX(16px)}
+.err{color:var(--a-critical);font-size:var(--a-text-sm);margin-top:8px;min-height:1em}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:.2s;
+  background:var(--a-ink);color:var(--a-bg);padding:10px 16px;border-radius:var(--a-radius-sm);font-size:var(--a-text-sm);pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+<div class="top"><h1>Status line</h1><span class="spacer"></span><span class="state" id="state"></span>
+<button class="a-btn" onclick="toggleTheme()">Toggle theme</button></div>
+<div class="wrap">
+<div class="panel">
+  <h2>Preview</h2>
+  <div class="term"><div class="box">&gt;</div><div class="sl" id="sl"></div></div>
+  <p class="hint">Drag a segment to reorder it. Click one to change its format on the right, or hover over it and press × to hide it. Hidden items wait in the tray; drag one back into the line to show it. A struck-through segment is auto-hidden right now because it is below its threshold. The preview is the real <code>statusline.sh</code> output, using the latest values Claude Code sent.</p>
+  <div class="tray" id="tray"></div>
+  <div class="err" id="err"></div>
+  <div class="actions">
+    <button class="a-btn" onclick="resetDefaults()">Reset to default</button>
+    <button class="a-btn" id="revert" onclick="revert()">Discard changes</button>
+    <button class="a-btn a-btn-primary" id="save" onclick="save()">Save</button>
+  </div>
+</div>
+<div class="panel insp" id="insp"></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+const ITEMS = __ITEMS__;
+const DEFAULTS = __DEFAULTS__;
+const byId = Object.fromEntries(ITEMS.map(i => [i.id, i]));
+let cfg = {...DEFAULTS}, saved = {...DEFAULTS}, segs = {}, sel = null, dragId = null, loaded = false;
+
+const order = () => cfg.order.split(',').filter(Boolean);
+const shown = () => new Set(cfg.show.split(',').filter(Boolean));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const dirty = () => JSON.stringify(cfg) !== JSON.stringify(saved);
+
+function toggleTheme(){ const r = document.documentElement;  // flip the theme actually showing, OS default included
+  const dark = r.getAttribute('data-theme') ? r.getAttribute('data-theme') === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.setAttribute('data-theme', dark ? 'light' : 'dark'); }
+function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3000); }
+
+function setOrder(ids){ cfg.order = ids.join(','); }
+function setShown(id, on){ const s = shown(); on ? s.add(id) : s.delete(id);
+  cfg.show = order().filter(x => s.has(x)).join(','); }
+function place(id, beforeId, after){  // move id next to beforeId
+  const o = order().filter(x => x !== id); let j = o.indexOf(beforeId) + (after ? 1 : 0);
+  o.splice(j, 0, id); setOrder(o); }
+
+// ---- preview: ask the server to run statusline.sh ----
+let pending = null, seq = 0;
+function refresh(){ clearTimeout(pending); pending = setTimeout(fetchPreview, 120); draw(); }
+async function fetchPreview(){
+  const my = ++seq;
+  try {
+    const r = await fetch('/api/preview', {method: 'POST', body: JSON.stringify(cfg)});
+    const j = await r.json();
+    if (my !== seq) return;
+    if (j.error) { document.getElementById('err').textContent = j.error; return; }
+    document.getElementById('err').textContent = '';
+    segs = Object.fromEntries(j.segments.map(s => [s.id, s])); loaded = true;
+    draw();
+  } catch (e) { document.getElementById('err').textContent = 'Server not reachable. Is the launcher window still open?'; }
+}
+
+// ---- render ----
+function segHTML(id){
+  const s = segs[id], text = s && s.text ? esc(s.text) : loaded ? '(no data yet)' : '…';
+  const cls = s && s.text ? (s.colour ? 'c-' + s.colour : '') : 'nodata';
+  const tip = s && s.colour === 'hidden' ? ' title="Hidden in the terminal right now: below its Hide until threshold"' : '';
+  return `<span class="seg ${cls} ${id === sel ? 'sel' : ''}"${tip} draggable="true" data-id="${id}" onclick="pick('${id}')">${text}<span class="x" title="Hide" onclick="event.stopPropagation();hide('${id}')">×</span></span>`;
+}
+function draw(){
+  const sh = shown(), ids = order();
+  const vis = ids.filter(id => sh.has(id)), off = ids.filter(id => !sh.has(id));
+  document.getElementById('sl').innerHTML = vis.length ? vis.map(segHTML).join('<span class="sep">|</span>')
+    : '<span class="seg nodata">(empty: drag an item from the tray)</span>';
+  document.getElementById('tray').innerHTML = off.length
+    ? '<span class="muted">Hidden:</span>' + off.map(id => `<span class="chip ${id === sel ? 'sel' : ''}" draggable="true" data-id="${id}" onclick="pick('${id}')">${byId[id].name}</span>`).join('')
+    : '<span class="muted">Nothing hidden. Drop a segment here to hide it.</span>';
+  drawInspector();
+  const d = dirty();
+  document.getElementById('save').disabled = !d;
+  document.getElementById('revert').disabled = !d;
+  document.getElementById('state').textContent = d ? 'Unsaved changes' : 'Saved';
+  wireDrag();
+}
+function control(it, c){
+  const k = `${it.id}.${c.key}`, v = cfg[k];
+  if (c.type === 'select') return `<select onchange="setOpt('${k}', this.value)">${c.options.map(([val, lab]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${lab}</option>`).join('')}</select>`;
+  if (c.type === 'toggle') return `<label class="sw"><input type="checkbox" ${v === '1' ? 'checked' : ''} onchange="setOpt('${k}', this.checked ? '1' : '0')"><span></span></label>`;
+  if (c.type === 'number') { const d = c.decimals || 0;
+    return `<input type="number" min="0" max="100" step="${d ? 0.01 : 5}" value="${esc(v)}" style="width:90px" title="${esc(c.hint || '')}"
+      onchange="setOpt('${k}', String(+Math.max(0, Math.min(100, parseFloat(this.value) || 0)).toFixed(${d})))">${c.hint ? `<div class="hint" style="margin-top:4px">${esc(c.hint)}</div>` : ''}`; }
+  return `<input type="text" value="${esc(v)}" style="width:140px" placeholder="none" oninput="setOpt('${k}', this.value, true)">`;
+}
+function drawInspector(){
+  const el = document.getElementById('insp');
+  if (!sel) { el.innerHTML = '<div class="eyebrow">Format</div><h2>No item selected</h2><p class="desc">Click a segment in the preview, or a hidden item in the tray, to change its format.</p>'; return; }
+  const it = byId[sel];
+  if (el.dataset.item === sel && el.contains(document.activeElement) && document.activeElement.type === 'text') return;  // keep typing focus
+  el.dataset.item = sel;
+  const visible = it.controls.filter(c => !c.when || [].concat(c.when[1]).includes(cfg[`${it.id}.${c.when[0]}`]));
+  el.innerHTML = `<div class="eyebrow">Format</div><h2>${it.name}${shown().has(sel) ? '' : ' <span class="desc">(hidden)</span>'}</h2>
+    <p class="desc">${it.desc}</p><dl>${visible.map(c => `<dt>${c.label}</dt><dd>${control(it, c)}</dd>`).join('')}</dl>`;
+}
+
+// ---- actions ----
+function pick(id){ sel = id; document.getElementById('insp').dataset.item = ''; draw(); }
+function hide(id){ setShown(id, false); refresh(); }
+function setOpt(k, v, typing){ cfg[k] = v; if (!typing) document.getElementById('insp').dataset.item = ''; refresh(); }
+function resetDefaults(){ cfg = {...DEFAULTS}; document.getElementById('insp').dataset.item = ''; refresh(); toast('Defaults loaded. Save to apply them.'); }
+function revert(){ cfg = {...saved}; document.getElementById('insp').dataset.item = ''; refresh(); }
+async function save(){
+  const r = await fetch('/api/save', {method: 'POST', body: JSON.stringify(cfg)});
+  const j = await r.json();
+  if (j.error) { document.getElementById('err').textContent = j.error; return; }
+  cfg = {...j.config}; saved = {...j.config}; draw();
+  toast('Saved. The status line picks it up on its next refresh.');
+}
+
+// ---- drag and drop ----
+function wireDrag(){
+  document.querySelectorAll('[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => { dragId = el.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId); });
+  });
+  document.querySelectorAll('#sl .seg[data-id]').forEach(el => {
+    el.addEventListener('dragover', e => { e.preventDefault(); const r = el.getBoundingClientRect();
+      const left = e.clientX < r.left + r.width / 2; el.classList.toggle('drop-l', left); el.classList.toggle('drop-r', !left); });
+    el.addEventListener('dragleave', () => el.classList.remove('drop-l', 'drop-r'));
+    el.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation();
+      if (!dragId || dragId === el.dataset.id) return draw();
+      place(dragId, el.dataset.id, el.classList.contains('drop-r')); setShown(dragId, true); sel = dragId;
+      document.getElementById('insp').dataset.item = ''; refresh(); });
+  });
+  const sl = document.getElementById('sl');  // dropping past the last segment appends
+  sl.ondragover = e => e.preventDefault();
+  sl.ondrop = e => { e.preventDefault(); if (!dragId) return;
+    const vis = order().filter(x => shown().has(x) && x !== dragId);
+    if (vis.length) place(dragId, vis[vis.length - 1], true);
+    setShown(dragId, true); sel = dragId; document.getElementById('insp').dataset.item = ''; refresh(); };
+  const tray = document.getElementById('tray');
+  tray.ondragover = e => { e.preventDefault(); tray.classList.add('over'); };
+  tray.ondragleave = () => tray.classList.remove('over');
+  tray.ondrop = e => { e.preventDefault(); tray.classList.remove('over'); if (dragId) hide(dragId); };
+}
+window.addEventListener('beforeunload', e => { if (dirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+(async () => {
+  try { const r = await fetch('/api/config'); saved = await r.json(); cfg = {...saved}; } catch (e) {}
+  sel = shown().values().next().value || null;
+  refresh();
+})();
+</script>
+</body>
+</html>
