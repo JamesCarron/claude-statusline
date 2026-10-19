@@ -16,13 +16,17 @@
 # 2026-10-08: config-driven items/formats + preview mode for the config page.
 #
 # Env: STATUSLINE_CONFIG  config file to use instead of <state>/config.txt
+#      STATUSLINE_NOW     epoch to use as "now" for pace and reset text (preview sim)
 #      STATUSLINE_PREVIEW=1  print every item as "id<TAB>colour<TAB>text" lines
 #                            (all items, shown or not) instead of the line;
 #                            colour "hidden" = auto-hidden below its threshold
 # ~\.claude\settings.json points here; Setup_Statusline.bat wires it up.
 
 IFS= read -r -d '' input
-now=$EPOCHSECONDS
+# STATUSLINE_NOW (preview only) simulates the clock for pace and reset text;
+# the totals-cache freshness check always uses the real clock (real_now)
+real_now=$EPOCHSECONDS
+now=${STATUSLINE_NOW:-$real_now}
 
 local_app=${LOCALAPPDATA:-$USERPROFILE\\AppData\\Local}
 local_app=${local_app//\\//}
@@ -39,10 +43,10 @@ declare -A C=(
   [show]=model,cwd,ctx,q5,qwk,mo
   [model.style]=display [model.effort]=0 [model.colour]=default
   [cwd.path]=last2 [cwd.max]=0 [cwd.colour]=default
-  [ctx.label]=ctx [ctx.measure]=used [ctx.display]=bar [ctx.colour]=threshold [ctx.warn]=80
-  [q5.label]=5h [q5.measure]=used [q5.display]=both [q5.colour]=threshold [q5.warn]=80 [q5.reset]=clock [q5.resetat]=60
-  [qwk.label]=wk [qwk.measure]=used [qwk.display]=pct [qwk.colour]=threshold [qwk.warn]=80 [qwk.reset]=clock [qwk.resetat]=60
-  [qwk.hide]=fixed [qwk.hidefixed]=80 [qwk.hidepace]=14.29
+  [ctx.label]=ctx [ctx.measure]=used [ctx.display]=bar [ctx.colour]=threshold [ctx.warn]=80 [ctx.pctat]=0
+  [q5.label]=5h [q5.measure]=used [q5.display]=both [q5.colour]=threshold [q5.warn]=80 [q5.pctat]=0 [q5.reset]=clock [q5.resetat]=60
+  [qwk.label]=wk [qwk.measure]=used [qwk.display]=pct [qwk.colour]=threshold [qwk.warn]=80 [qwk.pctat]=0 [qwk.reset]=clock [qwk.resetat]=60
+  [qwk.hide]=fixed [qwk.hidefixed]=80 [qwk.hidepace]=14.29 [qwk.pacedays]=all [qwk.paceunit]=continuous
   [mo.dec]=0 [mo.sep]=1 [mo.label]=mo [mo.colour]=dim
   [wkcost.dec]=0 [wkcost.sep]=1 [wkcost.label]=wk [wkcost.colour]=default
   [sess.dec]=2 [sess.sep]=1 [sess.label]=sess [sess.colour]=default
@@ -95,14 +99,19 @@ pct_item() {  # $1 id, $2 used % (int), $3 "1" = label after the value, $4 reset
   else
     [ "${C[$id.measure]}" = left ] && word=' left'
   fi
+  # the number shows only from <id>.pctat used %: "both" falls back to the bar,
+  # and "pct" has nothing left to show, so the item is auto-hidden
+  local num="$v%$word" hide=
+  (( used < ${C[$id.pctat]:-0} )) && num=
   case ${C[$id.display]} in
     bar) mkbar "$v"; body=$REPLY ;;
-    both) mkbar "$v"; body="$REPLY $v%$word" ;;
-    *) body="$v%$word" ;;
+    both) mkbar "$v"; body="$REPLY${num:+ $num}" ;;
+    *) body=${num:-$v%$word}; [ -z "$num" ] && hide=1 ;;
   esac
   if [ -n "$3" ]; then T[$id]="$body${lab:+ $lab}"; else T[$id]="${lab:+$lab }$body"; fi
   T[$id]+=$4
   colour "$id" "$used"
+  [ -n "$hide" ] && K[$id]=hidden
 }
 money() {  # $1 id, $2 usd
   local id=$1 t int frac lab=${C[$1.label]}
@@ -182,13 +191,16 @@ if [ -n "$REPLY" ]; then
   num resets_at "$b"; reset_text q5 "${REPLY%.*}" '%H:%M' "$u"
   pct_item q5 "$u" '' "$REPLY"
 fi
+thr= el= el_all=
 block seven_day
 if [ -n "$REPLY" ]; then
   b=$REPLY; num used_percentage "$b"; printf -v u '%.0f' "${REPLY:-0}"
   num resets_at "$b"; wk_reset=${REPLY%.*}; reset_text qwk "$wk_reset" '%a %H:%M' "$u"
   pct_item qwk "$u" '' "$REPLY"
   # Auto-hide while used % is below a threshold: a fixed %, or a pace of
-  # qwk.hidepace % per day since the reset (default 100/7, an even week).
+  # qwk.hidepace % per counted day since the reset (default 100/7, an even
+  # week). Counted days: every day, or Mon-Fri only (qwk.pacedays); each
+  # accrues continuously, or only once it is over (qwk.paceunit=whole).
   # Compared in hundredths of a percent so the pace keeps its fraction.
   case ${C[qwk.hide]} in
     fixed) thr=$(( 10#${C[qwk.hidefixed]:-0} * 100 )) ;;
@@ -196,7 +208,18 @@ if [ -n "$REPLY" ]; then
       r=${C[qwk.hidepace]:-0}; ri=${r%%.*} rf=
       [[ $r == *.* ]] && rf=${r#*.}
       rf="${rf}00"
-      el=$(( now - (wk_reset - 604800) )); (( el < 0 )) && el=0
+      # el = counted seconds the pace uses; el_all = the same days counted hour by hour
+      el=0 el_all=0 ws=$(( wk_reset - 604800 ))
+      for (( d = 0; d < 7; d++ )); do
+        ds=$(( ws + d * 86400 ))
+        printf -v wd '%(%u)T' $(( ds + 43200 ))  # 1 = Mon ... 7 = Sun; midday dodges DST
+        [ "${C[qwk.pacedays]}" = weekdays ] && (( wd > 5 )) && continue
+        s=$(( now - ds )); (( s > 86400 )) && s=86400
+        (( s < 0 )) && s=0
+        el_all=$(( el_all + s ))
+        [ "${C[qwk.paceunit]}" = whole ] && (( s < 86400 )) && s=0
+        el=$(( el + s ))
+      done
       thr=$(( (10#${ri:-0} * 100 + 10#${rf:0:2}) * el / 86400 )) ;;
     *) thr=0 ;;
   esac
@@ -234,12 +257,12 @@ c_mo= c_wk= c_at=0 c_week= c_month=
 [ -z "$wk_from" ] && wk_from=$c_wk mo_from=$c_mo
 
 if [ -n "$wk_from" ] && [[ -n $preview || ,${C[show]}, == *,mo,* || ,${C[show]}, == *,wkcost,* ]] \
-  && { [ "$c_mo $c_wk" != "$mo_from $wk_from" ] || (( now - ${c_at:-0} > 300 )); }; then
+  && { [ "$c_mo $c_wk" != "$mo_from $wk_from" ] || (( real_now - ${c_at:-0} > 300 )); }; then
   lock_at=0
   [ -f "$lock" ] && read -r lock_at < "$lock"
-  (( now - ${lock_at:-0} > 600 )) && rm -f "$lock" 2>/dev/null  # stale lock
+  (( real_now - ${lock_at:-0} > 600 )) && rm -f "$lock" 2>/dev/null  # stale lock
   [ -d "$dir" ] || mkdir -p "$dir"
-  if ( set -C; printf '%s\n' "$now" > "$lock" ) 2>/dev/null; then
+  if ( set -C; printf '%s\n' "$real_now" > "$lock" ) 2>/dev/null; then
     (
       wk_iso="${wk_from:0:4}-${wk_from:4:2}-${wk_from:6:2}"
       v=$(npx -y ccusage@20.0.26 claude daily --json --since "$mo_from" 2>/dev/null \
@@ -267,6 +290,11 @@ fi
 IFS=, read -r -a ids <<< "${C[order]}"
 if [ -n "$preview" ]; then
   for id in "${ids[@]}"; do printf '%s\t%s\t%s\n' "$id" "${K[$id]}" "${T[$id]}"; done
+  # the weekly auto-hide threshold in % used, so the page can show it
+  [ -n "$thr" ] && (( thr > 0 )) && printf 'qwk.thr\t\t%d.%02d\n' $(( thr / 100 )) $(( thr % 100 ))
+  # pace only: "<counted days elapsed> <counted days credited>", in hundredths of a day
+  [ "${C[qwk.hide]}" = pace ] && [ -n "$el_all" ] && printf 'qwk.days\t\t%d %d\n' \
+    $(( el_all * 100 / 86400 )) $(( el * 100 / 86400 ))
   exit 0
 fi
 declare -A ANSI=([dim]=$'\e[2m' [accent]=$'\e[36m' [warn]=$'\e[33m')

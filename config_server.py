@@ -44,6 +44,8 @@ PCT = [
     {"key": "colour", "label": "Colour", "type": "select",
      "options": [["threshold", "Threshold"], ["default", "Default"], ["dim", "Dim"], ["accent", "Accent"]]},
     {"key": "warn", "label": "Warn at (used %)", "type": "number", "when": ["colour", "threshold"]},
+    {"key": "pctat", "label": "Show percent from (used %)", "type": "number", "when": ["display", ["pct", "both"]],
+     "hint": "Below it: bar only, or hidden when shown as percent. 0 = always"},
 ]
 RESET = {"key": "reset", "label": "Reset time", "type": "select",
          "options": [["clock", "Clock time"], ["countdown", "Countdown"], ["hide", "Hide"]]}
@@ -53,8 +55,12 @@ HIDE = [
     {"key": "hide", "label": "Hide until", "type": "select",
      "options": [["off", "Always show"], ["fixed", "Fixed % used"], ["pace", "Ahead of pace"]]},
     {"key": "hidefixed", "label": "Show from (used %)", "type": "number", "when": ["hide", "fixed"]},
-    {"key": "hidepace", "label": "Pace (% per day since reset)", "type": "number", "decimals": 2,
-     "when": ["hide", "pace"], "hint": "14.29 = 1/7 of the week per day"},
+    {"key": "hidepace", "label": "Pace (% per counted day)", "type": "number", "decimals": 2,
+     "when": ["hide", "pace"], "hint": "14.29 = 1/7 per day over all 7 days; 20 = the week in 5 weekdays"},
+    {"key": "pacedays", "label": "Counted days", "type": "select", "when": ["hide", "pace"],
+     "options": [["all", "Every day"], ["weekdays", "Mon–Fri only"]]},
+    {"key": "paceunit", "label": "Count a day", "type": "select", "when": ["hide", "pace"],
+     "options": [["continuous", "Hour by hour"], ["whole", "Once it is over"]]},
 ]
 LABEL = {"key": "label", "label": "Label", "type": "text"}
 COST = [
@@ -92,11 +98,13 @@ DEFAULTS = {
     "model.style": "display", "model.effort": "0", "model.colour": "default",
     "cwd.path": "last2", "cwd.max": "0", "cwd.colour": "default",
     "ctx.label": "ctx", "ctx.measure": "used", "ctx.display": "bar", "ctx.colour": "threshold", "ctx.warn": "80",
+    "ctx.pctat": "0",
     "q5.label": "5h", "q5.measure": "used", "q5.display": "both", "q5.colour": "threshold", "q5.warn": "80",
-    "q5.reset": "clock", "q5.resetat": "60",
+    "q5.pctat": "0", "q5.reset": "clock", "q5.resetat": "60",
     "qwk.label": "wk", "qwk.measure": "used", "qwk.display": "pct", "qwk.colour": "threshold", "qwk.warn": "80",
-    "qwk.reset": "clock", "qwk.resetat": "60",
+    "qwk.pctat": "0", "qwk.reset": "clock", "qwk.resetat": "60",
     "qwk.hide": "fixed", "qwk.hidefixed": "80", "qwk.hidepace": "14.29",
+    "qwk.pacedays": "all", "qwk.paceunit": "continuous",
     "mo.dec": "0", "mo.sep": "1", "mo.label": "mo", "mo.colour": "dim",
     "wkcost.dec": "0", "wkcost.sep": "1", "wkcost.label": "wk", "wkcost.colour": "default",
     "sess.dec": "2", "sess.sep": "1", "sess.label": "sess", "sess.colour": "default",
@@ -214,7 +222,67 @@ def payload_text() -> str:
     return json.dumps(s)
 
 
-def render_preview(cfg: dict, payload: str | None = None) -> list[dict]:
+# ---- simulation: override the used % values in the payload -----------------------
+# id -> where its used % lives in the payload. resets_at is never touched: the
+# week/month windows hang off it, and a shifted window would make the preview
+# start a ccusage refresh for the wrong dates.
+SIM = {"ctx": ("context_window", None), "q5": ("rate_limits", "five_hour"), "qwk": ("rate_limits", "seven_day")}
+
+
+def current_usage(payload: str | None = None) -> dict:
+    """Used % per simulated item in the payload, or None where it has no value yet."""
+    try:
+        p = json.loads(payload or payload_text())
+    except json.JSONDecodeError:
+        p = {}
+    out = {}
+    for sid, (top, sub) in SIM.items():
+        blk = p.get(top) or {}
+        if sub:
+            blk = blk.get(sub) or {}
+        v = blk.get("used_percentage")
+        if v is None and sid == "ctx" and blk.get("remaining_percentage") is not None:
+            v = 100 - blk["remaining_percentage"]
+        out[sid] = None if v is None else round(float(v))
+    # days since the weekly reset, and the reset itself (epoch) for the page's labels
+    import time
+    reset = ((p.get("rate_limits") or {}).get("seven_day") or {}).get("resets_at")
+    out["reset"] = int(reset) if reset else None
+    out["days"] = None if not reset else round(min(7.0, max(0.0, 7 - (reset - time.time()) / 86400)), 2)
+    return out
+
+
+def simulate(payload: str, sim: dict) -> tuple[str, int | None]:
+    """The payload with each item in `sim` set to that used %, plus the simulated "now"
+    (epoch) when sim has "days" since the weekly reset. Raises ValueError on bad input.
+    "days" moves the clock, not resets_at, so the cost windows stay put."""
+    import time
+    p = json.loads(payload)
+    now = None
+    sim = dict(sim)
+    days = sim.pop("days", None)
+    if days is not None:
+        if isinstance(days, bool) or not isinstance(days, (int, float)) or not 0 <= days <= 7:
+            raise ValueError("sim.days: must be 0-7")
+        reset = ((p.get("rate_limits") or {}).get("seven_day") or {}).get("resets_at")
+        if reset:
+            now = int(reset - 604800 + days * 86400)
+    for sid, v in sim.items():
+        if sid not in SIM or isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
+            raise ValueError(f"sim.{sid}: must be 0-100")
+        v = round(v)
+        top, sub = SIM[sid]
+        blk = p.setdefault(top, {})
+        if sub:
+            blk = blk.setdefault(sub, {})
+            blk.setdefault("resets_at", int(time.time()) + (5 * 3600 if sid == "q5" else 3 * 86400))
+            blk["used_percentage"] = v
+        else:
+            blk["used_percentage"], blk["remaining_percentage"] = v, 100 - v
+    return json.dumps(p), now
+
+
+def render_preview(cfg: dict, payload: str | None = None, now: int | None = None) -> list[dict]:
     """Every item's text and colour, rendered by statusline.sh under `cfg`."""
     sd = state_dir()
     sd.mkdir(parents=True, exist_ok=True)
@@ -223,6 +291,8 @@ def render_preview(cfg: dict, payload: str | None = None) -> list[dict]:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(format_config(cfg))
         env = dict(os.environ, STATUSLINE_PREVIEW="1", STATUSLINE_CONFIG=tmp)
+        if now is not None:
+            env["STATUSLINE_NOW"] = str(now)
         res = subprocess.run([find_bash(), str(SCRIPT)], input=(payload or payload_text()).encode("utf-8"),
                              capture_output=True, env=env, timeout=20)
     finally:
@@ -270,18 +340,25 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, build_page().encode("utf-8"), "text/html; charset=utf-8")
         elif self.path == "/api/config":
             self._json(read_config())
+        elif self.path == "/api/usage":
+            self._json(current_usage())
         else:
             self._send(404, b"{}")
 
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            # preview takes {"config": ..., "sim": {id: used %}}; save takes the config itself
+            payload = now = None
+            if self.path == "/api/preview" and "config" in body:
+                payload, now = simulate(payload_text(), body.get("sim") or {})
+                body = body["config"]
             cfg = validate(body)
         except (ValueError, json.JSONDecodeError) as e:
             return self._json({"error": str(e)}, 400)
         if self.path == "/api/preview":
             try:
-                self._json({"segments": render_preview(cfg)})
+                self._json({"segments": render_preview(cfg, payload, now)})
             except (RuntimeError, subprocess.TimeoutExpired) as e:
                 self._json({"error": str(e)}, 500)
         elif self.path == "/api/save":

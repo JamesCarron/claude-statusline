@@ -71,7 +71,7 @@ body{margin:0;background:var(--a-bg);color:var(--a-ink);font-family:var(--a-font
   background:var(--a-bg);color:var(--a-ink);font-size:var(--a-text-sm);cursor:grab}
 .chip.sel{outline:2px solid var(--a-accent);outline-offset:1px}
 .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-.eyebrow{color:var(--a-accent-ink);font-weight:600;font-size:var(--a-text-xs);text-transform:uppercase;letter-spacing:.06em}
+.eyebrow{color:var(--a-ink-secondary);font-weight:600;font-size:var(--a-text-xs);text-transform:uppercase;letter-spacing:.06em}
 .insp h2{margin:4px 0 6px}
 .insp .desc{color:var(--a-ink-secondary);margin:0 0 14px;font-size:var(--a-text-sm)}
 .insp dl{display:grid;grid-template-columns:140px 1fr;gap:10px 14px;align-items:center;margin:0}
@@ -86,6 +86,15 @@ body{margin:0;background:var(--a-bg);color:var(--a-ink);font-family:var(--a-font
 .sw span:before{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;border-radius:50%;background:var(--a-bg);transition:.15s}
 .sw input:checked+span{background:var(--a-link)}
 .sw input:checked+span:before{transform:translateX(16px)}
+.sim{margin-top:14px;padding:12px 14px;border:1px solid var(--a-line);border-radius:var(--a-radius-sm);background:var(--a-bg-subtle)}
+.sim .head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.sim .head .eyebrow{flex:1}
+.sim .rows{display:grid;grid-template-columns:110px minmax(60px,1fr) minmax(0,1fr);gap:6px 14px;align-items:center}
+.sim label{color:var(--a-ink-secondary);font-size:var(--a-text-sm)}
+.sim input[type=range]{width:100%;accent-color:var(--a-link)}
+.sim .val{font-family:var(--a-font-mono);font-size:var(--a-text-sm);overflow-wrap:anywhere}
+.sim .val .now{color:var(--a-ink-secondary)}
+.sim .thr{color:var(--a-ink-secondary);font-size:var(--a-text-sm)}
 .err{color:var(--a-critical);font-size:var(--a-text-sm);margin-top:8px;min-height:1em}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:.2s;
   background:var(--a-ink);color:var(--a-bg);padding:10px 16px;border-radius:var(--a-radius-sm);font-size:var(--a-text-sm);pointer-events:none}
@@ -99,7 +108,12 @@ body{margin:0;background:var(--a-bg);color:var(--a-ink);font-family:var(--a-font
 <div class="panel">
   <h2>Preview</h2>
   <div class="term"><div class="box">&gt;</div><div class="sl" id="sl"></div></div>
-  <p class="hint">Drag a segment to reorder it. Click one to change its format on the right, or hover over it and press × to hide it. Hidden items wait in the tray; drag one back into the line to show it. A struck-through segment is auto-hidden right now because it is below its threshold. The preview is the real <code>statusline.sh</code> output, using the latest values Claude Code sent.</p>
+  <p class="hint">Drag a segment to reorder it. Click one to change its format on the right, or hover over it and press × to hide it. Hidden items wait in the tray; drag one back into the line to show it. A struck-through segment is auto-hidden right now because it is below its threshold. The preview is the real <code>statusline.sh</code> output, using the latest values Claude Code sent with the usage below in place of the real usage.</p>
+  <div class="sim">
+    <div class="head"><span class="eyebrow">Simulate usage (preview only, never saved)</span>
+      <button class="a-btn" id="simreset" onclick="simReset()">Reset to current usage</button></div>
+    <div class="rows" id="simrows"></div>
+  </div>
   <div class="tray" id="tray"></div>
   <div class="err" id="err"></div>
   <div class="actions">
@@ -141,7 +155,7 @@ function refresh(){ clearTimeout(pending); pending = setTimeout(fetchPreview, 12
 async function fetchPreview(){
   const my = ++seq;
   try {
-    const r = await fetch('/api/preview', {method: 'POST', body: JSON.stringify(cfg)});
+    const r = await fetch('/api/preview', {method: 'POST', body: JSON.stringify({config: cfg, sim})});
     const j = await r.json();
     if (my !== seq) return;
     if (j.error) { document.getElementById('err').textContent = j.error; return; }
@@ -151,11 +165,59 @@ async function fetchPreview(){
   } catch (e) { document.getElementById('err').textContent = 'Server not reachable. Is the launcher window still open?'; }
 }
 
+// ---- usage simulation: sliders override the used % sent to the preview ----
+const SIM_ITEMS = [['ctx', 'Context'], ['q5', '5-hour quota'], ['qwk', 'Weekly quota']];
+let usage = {}, sim = {};
+function simVal(id){
+  const now = usage[id] == null ? 'no data yet' : `now ${usage[id]}%`;
+  return `${sim[id]}% used <span class="now">(${now})</span>`;
+}
+// days since the weekly reset: moves the preview's clock (pace, reset text), never the reset itself
+const when = d => usage.reset == null ? '' : new Date((usage.reset - (7 - d) * 86400) * 1000)
+  .toLocaleString(undefined, {weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false});
+function daysVal(){
+  if (usage.days == null) return 'no weekly data yet';
+  return `${sim.days.toFixed(2)} d · ${when(sim.days)} <span class="now">(now ${usage.days.toFixed(2)} d)</span>`;
+}
+function drawSim(){
+  document.getElementById('simrows').innerHTML = SIM_ITEMS.map(([id, name]) =>
+    `<label for="sim-${id}">${name}</label>
+     <input type="range" id="sim-${id}" min="0" max="100" step="1" value="${sim[id]}" oninput="simSet('${id}', +this.value)">
+     <span class="val" id="simv-${id}">${simVal(id)}</span>`).join('') +
+    `<label for="sim-days">Days since reset</label>
+     <input type="range" id="sim-days" min="0" max="7" step="0.25" value="${sim.days}" ${usage.days == null ? 'disabled' : ''} oninput="simSet('days', +this.value)">
+     <span class="val" id="simv-days">${daysVal()}</span>
+     <span></span><span class="thr" id="simthr"></span><span></span>`;
+  simButton(); drawThr();
+}
+function drawThr(){  // the weekly auto-hide threshold, as computed by statusline.sh itself
+  const el = document.getElementById('simthr'); if (!el) return;
+  const t = segs['qwk.thr'], h = cfg['qwk.hide'], thr = t ? (+t.text).toFixed(1) : '0.0';
+  if (h === 'off') { el.textContent = 'Weekly quota: always shown (Hide until is off).'; return; }
+  if (h === 'fixed') { el.textContent = t ? `Weekly quota shows from ${thr}% used.` : ''; return; }
+  const dd = segs['qwk.days']; if (!dd) { el.textContent = ''; return; }
+  // counted days as statusline.sh computed them: elapsed (hour by hour) and credited
+  const [all, cred] = dd.text.split(' ').map(x => (x / 100).toFixed(2));
+  const which = cfg['qwk.pacedays'] === 'weekdays' ? 'Mon–Fri days' : 'days';
+  const whole = cfg['qwk.paceunit'] === 'whole';
+  el.textContent = `${all} counted ${which} elapsed` + (whole ? `, ${(+cred).toFixed(0)} complete` : '')
+    + ` × ${cfg['qwk.hidepace']}% = ${thr}%. The weekly quota shows from ${thr}% used.`;
+}
+function simButton(){ document.getElementById('simreset').disabled =
+  SIM_ITEMS.every(([id]) => sim[id] === (usage[id] ?? 0)) && sim.days === (usage.days ?? 0); }
+function simSet(id, v){ sim[id] = v; document.getElementById(`simv-${id}`).innerHTML = id === 'days' ? daysVal() : simVal(id); simButton(); refresh(); }
+async function simReset(){
+  try { usage = await (await fetch('/api/usage')).json(); } catch (e) {}  // re-read: Claude Code may have sent newer values
+  sim = Object.fromEntries(SIM_ITEMS.map(([id]) => [id, usage[id] ?? 0]));
+  sim.days = usage.days ?? 0;
+  drawSim(); refresh();
+}
+
 // ---- render ----
 function segHTML(id){
   const s = segs[id], text = s && s.text ? esc(s.text) : loaded ? '(no data yet)' : '…';
   const cls = s && s.text ? (s.colour ? 'c-' + s.colour : '') : 'nodata';
-  const tip = s && s.colour === 'hidden' ? ' title="Hidden in the terminal right now: below its Hide until threshold"' : '';
+  const tip = s && s.colour === 'hidden' ? ' title="Hidden in the terminal right now: below its Hide until or Show percent from threshold"' : '';
   return `<span class="seg ${cls} ${id === sel ? 'sel' : ''}"${tip} draggable="true" data-id="${id}" onclick="pick('${id}')">${text}<span class="x" title="Hide" onclick="event.stopPropagation();hide('${id}')">×</span></span>`;
 }
 function draw(){
@@ -166,7 +228,7 @@ function draw(){
   document.getElementById('tray').innerHTML = off.length
     ? '<span class="muted">Hidden:</span>' + off.map(id => `<span class="chip ${id === sel ? 'sel' : ''}" draggable="true" data-id="${id}" onclick="pick('${id}')">${byId[id].name}</span>`).join('')
     : '<span class="muted">Nothing hidden. Drop a segment here to hide it.</span>';
-  drawInspector();
+  drawInspector(); drawThr();
   const d = dirty();
   document.getElementById('save').disabled = !d;
   document.getElementById('revert').disabled = !d;
@@ -237,7 +299,7 @@ window.addEventListener('beforeunload', e => { if (dirty()) { e.preventDefault()
 (async () => {
   try { const r = await fetch('/api/config'); saved = await r.json(); cfg = {...saved}; } catch (e) {}
   sel = shown().values().next().value || null;
-  refresh();
+  await simReset();
 })();
 </script>
 </body>

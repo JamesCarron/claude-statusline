@@ -65,13 +65,15 @@ The setup points `statusLine` in `%USERPROFILE%\.claude\settings.json` at the cl
 Run `Statusline_Config.bat` (or `python config_server.py`). It starts a stdlib-only server on an ephemeral port and opens the browser. Close the window to stop it.
 
 - The preview is the real `statusline.sh` output, rendered against the last payload Claude Code sent.
+- "Simulate usage" sliders set the context, 5-hour and weekly used %, and the days since the weekly reset, for the preview only, so you can see where thresholds kick in. Under them the page shows the weekly threshold at that point in the week, as `statusline.sh` computed it. The days slider moves the preview's clock (`STATUSLINE_NOW`), not the reset. They start at the current usage, and "Reset to current usage" re-reads the latest payload and puts them back. Reset times are never simulated, because the week and month cost windows hang off them.
 - Drag segments to reorder them. Press × to hide one. Hidden items wait in a tray; drag one back to show it.
 - Click a segment to open its format panel. Options include:
   - name style, and whether to append the effort level;
   - path style, with a maximum length;
   - used or left, shown as percent, bar or both;
+  - context, 5-hour and weekly quota: the percentage number only from a threshold ("Show percent from", default 0 = always). Below it, "bar + percent" shows just the bar and "percent" hides the item;
   - reset shown as a clock time, a countdown or hidden, and only once usage reaches a threshold ("Show reset from", default 60% used; 0 = always);
-  - weekly quota only, "Hide until": always show it, show it from a fixed % used, or show it only when ahead of a pace of N % per day since the reset (default 14.29). While it is auto-hidden, the preview shows it struck through so it stays draggable;
+  - weekly quota only, "Hide until": always show it, show it from a fixed % used, or show it only when ahead of a pace of N % per counted day since the reset (default 14.29). "Counted days" is every day or Mon–Fri only; "Count a day" accrues it hour by hour or only once the day is over. Example: 20 %/day, Mon–Fri, once over = shows from 0% on Monday, 20% on Tuesday … 80% on Friday and 100% at the weekend. While it is auto-hidden, the preview shows it struck through so it stays draggable;
   - label text, decimals and thousands separator;
   - colour, including amber once usage passes a threshold.
 - Save writes `%LOCALAPPDATA%\Tools\claude_statusline\config.txt`. The status line uses it on its next refresh, so no restart is needed.

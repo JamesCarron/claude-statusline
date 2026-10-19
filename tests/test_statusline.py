@@ -65,17 +65,21 @@ class Base(unittest.TestCase):
             os.environ["LOCALAPPDATA"] = self.env_old
         self.tmp.cleanup()
 
+    # the percent threshold (default 60) would hide every test value; tests of
+    # other options switch it off, and test_percent_threshold covers it
+    NOPCT = {"ctx.pctat": "0", "q5.pctat": "0", "qwk.pctat": "0"}
+
     def line(self, cfg: dict | None = None) -> str:
         env = dict(os.environ)
         if cfg is not None:
             path = self.sd / "t_config.txt"
-            cs.write_config(cs.validate(cfg), path)
+            cs.write_config(cs.validate({**self.NOPCT, **cfg}), path)
             env["STATUSLINE_CONFIG"] = str(path)
         r = subprocess.run([cs.find_bash(), str(cs.SCRIPT)], input=PAYLOAD.encode(), capture_output=True, env=env)
         return r.stdout.decode("utf-8")
 
     def seg(self, overrides: dict, item: str) -> dict:
-        return {s["id"]: s for s in cs.render_preview(cs.validate(overrides), PAYLOAD)}[item]
+        return {s["id"]: s for s in cs.render_preview(cs.validate({**self.NOPCT, **overrides}), PAYLOAD)}[item]
 
 
 class Parity(Base):
@@ -92,6 +96,18 @@ class Parity(Base):
         # weekly quota (54%) is under the default fixed 80% "show from", so hidden
         self.assertEqual(self.line(), "Opus 5.5 | " + HOME.rsplit("\\", 1)[-1] + "\\Documents | █░░░░░░░ ctx"
                          " | 5h ██░░░░░░ 23% | \x1b[2m$1,248 mo\x1b[0m")
+
+    def test_percent_threshold(self):
+        bar = "█░░░░░░░"  # 9% used
+        for over, want in [({"ctx.pctat": "9"}, "91% ctx"),
+                           ({"ctx.pctat": "10"}, None),                       # pct only: hidden
+                           ({"ctx.display": "both", "ctx.measure": "used", "ctx.pctat": "10"}, f"{bar} ctx"),
+                           ({"ctx.display": "both", "ctx.measure": "used", "ctx.pctat": "9"}, f"{bar} 9% used ctx"),
+                           ({"ctx.display": "bar", "ctx.measure": "used", "ctx.pctat": "100"}, f"{bar} ctx")]:
+            with self.subTest(over=over):
+                self.assertEqual(self.line({"show": "ctx", "ctx.measure": "left", "ctx.display": "pct", **over}), want or "")
+        self.assertEqual(self.line({"show": "q5", "q5.display": "pct", "q5.pctat": "24"}), "")
+        self.assertEqual(self.line({"show": "q5", "q5.display": "pct", "q5.pctat": "23"}), "5h 23%")
 
     def test_reset_threshold(self):
         rwk = time.strftime("%a %H:%M", time.localtime(RWK))
@@ -155,6 +171,51 @@ class Formats(Base):
         self.assertEqual(self.seg({"mo.colour": "accent"}, "mo")["colour"], "accent")
         self.assertEqual(self.seg({"qwk.hide": "off", "qwk.warn": "50"}, "qwk")["colour"], "warn")
         self.assertEqual(self.seg({"qwk.hide": "off"}, "qwk")["colour"], "")
+
+
+class Simulate(Base):
+    def test_current_usage(self):
+        u = cs.current_usage(PAYLOAD)
+        self.assertEqual({k: u[k] for k in ("ctx", "q5", "qwk", "reset")}, {"ctx": 9, "q5": 23, "qwk": 54, "reset": RWK})
+        self.assertAlmostEqual(u["days"], 7 - (RWK - time.time()) / 86400, places=1)
+        self.assertEqual(cs.current_usage(json.dumps({"model": {}})),
+                         {"ctx": None, "q5": None, "qwk": None, "reset": None, "days": None})
+
+    def test_days_moves_the_clock_not_the_reset(self):
+        p, now = cs.simulate(PAYLOAD, {"days": 2.5})
+        self.assertEqual(now, RWK - 604800 + 216000)
+        self.assertEqual(p, cs.simulate(PAYLOAD, {})[0])
+        self.assertIsNone(cs.simulate(json.dumps({"model": {}}), {"days": 3})[1])
+
+    def test_simulated_values_reach_the_line(self):
+        p, _ = cs.simulate(PAYLOAD, {"ctx": 70, "q5": 65, "qwk": 61})
+        self.assertEqual({k: v for k, v in cs.current_usage(p).items() if k in cs.SIM}, {"ctx": 70, "q5": 65, "qwk": 61})
+        self.assertIn(f'"resets_at": {RWK}', p)  # windows untouched
+        segs = {s["id"]: s for s in cs.render_preview(cs.validate({"ctx.measure": "left", "ctx.display": "pct", "q5.display": "pct"}), p)}
+        self.assertEqual(segs["ctx"]["text"], "30% ctx")
+        self.assertEqual(segs["q5"]["text"], "5h 65% (" + time.strftime("%H:%M", time.localtime(R5)) + ")")
+
+    def test_rejects_bad_sim(self):
+        for bad in ({"ctx": 101}, {"ctx": -1}, {"ctx": "50"}, {"ctx": True}, {"mo": 5}, {"days": 8}, {"days": "1"}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                cs.simulate(PAYLOAD, bad)
+
+    def test_pace_modes(self):
+        # a week resetting Sun 00:00 local, seen at Thu 18:00 (4.75 days in), pace 20 %/day
+        reset = int(time.mktime((2026, 10, 18, 0, 0, 0, 0, 0, -1)))
+        p = json.loads(PAYLOAD)
+        p["rate_limits"]["seven_day"]["resets_at"] = reset
+        now = reset - 604800 + 4 * 86400 + 18 * 3600
+        for days, unit, want, counted in [("all", "continuous", "95.00", "475 475"),     # 4.75 d
+                                          ("all", "whole", "80.00", "475 400"),          # Sun-Wed
+                                          ("weekdays", "continuous", "75.00", "375 375"),  # Mon-Wed + 0.75 Thu
+                                          ("weekdays", "whole", "60.00", "375 300")]:    # Mon-Wed
+            with self.subTest(days=days, unit=unit):
+                segs = {s["id"]: s for s in cs.render_preview(
+                    cs.validate({"qwk.hide": "pace", "qwk.hidepace": "20", "qwk.pacedays": days, "qwk.paceunit": unit}), json.dumps(p), now)}
+                self.assertEqual(segs["qwk.thr"]["text"], want)
+                self.assertEqual(segs["qwk.days"]["text"], counted)
+                self.assertEqual(segs["qwk"]["colour"] == "hidden", 54 < float(want))
 
 
 class Validate(unittest.TestCase):
