@@ -184,12 +184,26 @@ else
 fi
 
 # rate_limits.{five_hour,seven_day} -- the same numbers /usage shows; only on
-# subscription plans, and only after the first API response
+# subscription plans, and only after the first API response.
+# Verified Ultra has no 5-hour window, yet the payload still carries one (at 0%); the
+# plan is only in ~/.claude.json. Reading that (~110 KB) costs ~120 ms here,
+# so the plan is cached in plan.txt ("<epoch> <plan>") for 5 minutes.
+p_at=0 plan=
+[ -f "$dir/plan.txt" ] && read -r p_at plan < "$dir/plan.txt"
+if (( real_now - ${p_at:-0} > 300 )); then
+  cj=${CLAUDE_CONFIG_DIR:-${USERPROFILE:-$HOME}}/.claude.json; cj=${cj//\\//}
+  [[ $cj =~ ^([A-Za-z]):(.*) ]] && cj="/${BASH_REMATCH[1],,}${BASH_REMATCH[2]}"
+  [ -f "$cj" ] && IFS= read -r -d '' cj < "$cj"
+  str planDisplayName "$cj"; plan=$REPLY
+  [ -d "$dir" ] && printf '%s %s\n' "$real_now" "$plan" > "$dir/plan.txt"
+fi
 block five_hour
 if [ -n "$REPLY" ]; then
   b=$REPLY; num used_percentage "$b"; printf -v u '%.0f' "${REPLY:-0}"
   num resets_at "$b"; reset_text q5 "${REPLY%.*}" '%H:%M' "$u"
   pct_item q5 "$u" '' "$REPLY"
+  # unverified Ultra accounts still have a 5-hour window, so hide only at 0%
+  [ "$plan" = Ultra ] && (( u == 0 )) && K[q5]=hidden
 fi
 thr= el= el_all=
 block seven_day
@@ -223,7 +237,8 @@ if [ -n "$REPLY" ]; then
       thr=$(( (10#${ri:-0} * 100 + 10#${rf:0:2}) * el / 86400 )) ;;
     *) thr=0 ;;
   esac
-  (( u * 100 < thr )) && K[qwk]=hidden
+  # on Ultra the weekly quota is the only quota, so it always shows (JC 2026-11-06)
+  (( u * 100 < thr )) && [ "$plan" != Ultra ] && K[qwk]=hidden
 fi
 
 # session cost -- from the payload, an API-equivalent estimate

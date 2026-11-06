@@ -52,6 +52,9 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.env_old = os.environ.get("LOCALAPPDATA")
         os.environ["LOCALAPPDATA"] = self.tmp.name
+        # keep the real ~/.claude.json (and its plan) out of the tests
+        self.cfgdir_old = os.environ.get("CLAUDE_CONFIG_DIR")
+        os.environ["CLAUDE_CONFIG_DIR"] = self.tmp.name
         self.sd = cs.state_dir()
         self.sd.mkdir(parents=True)
         mo, wk = windows(RWK)
@@ -63,6 +66,10 @@ class Base(unittest.TestCase):
             os.environ.pop("LOCALAPPDATA", None)
         else:
             os.environ["LOCALAPPDATA"] = self.env_old
+        if self.cfgdir_old is None:
+            os.environ.pop("CLAUDE_CONFIG_DIR", None)
+        else:
+            os.environ["CLAUDE_CONFIG_DIR"] = self.cfgdir_old
         self.tmp.cleanup()
 
     # the percent threshold (default 60) would hide every test value; tests of
@@ -108,6 +115,20 @@ class Parity(Base):
                 self.assertEqual(self.line({"show": "ctx", "ctx.measure": "left", "ctx.display": "pct", **over}), want or "")
         self.assertEqual(self.line({"show": "q5", "q5.display": "pct", "q5.pctat": "24"}), "")
         self.assertEqual(self.line({"show": "q5", "q5.display": "pct", "q5.pctat": "23"}), "5h 23%")
+
+    def test_ultra_hides_5h(self):
+        cj = Path(self.tmp.name) / ".claude.json"
+        zero = PAYLOAD.replace('"used_percentage": 23', '"used_percentage": 0')
+        for plan, ultra in [("Max", False), ("Ultra", True)]:
+            with self.subTest(plan=plan):
+                cj.write_text(json.dumps({"oauthAccount": {"planDisplayName": plan}}, indent=2))
+                (self.sd / "plan.txt").unlink(missing_ok=True)  # the script caches the plan for 5 min
+                # unverified Ultra still has a 5h window: shown while non-zero
+                self.assertEqual(self.line({"show": "q5", "q5.display": "pct"}), "5h 23%")
+                segs = {s["id"]: s for s in cs.render_preview(cs.validate(dict(self.NOPCT)), zero)}
+                self.assertEqual(segs["q5"]["colour"] == "hidden", ultra)
+                # weekly (54%, under the default 80% hide) shows anyway on Ultra
+                self.assertEqual(self.seg({}, "qwk")["colour"] == "hidden", not ultra)
 
     def test_reset_threshold(self):
         rwk = time.strftime("%a %H:%M", time.localtime(RWK))
